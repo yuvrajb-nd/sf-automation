@@ -18,6 +18,11 @@ on:
       repo:
         required: true
         type: string
+      pipeline_order:
+        description: Comma-separated branch promotion order (e.g. TESTING,STAGING,main)
+        required: false
+        type: string
+        default: 'TESTING,main'
     secrets:
       GH_BOT_TOKEN:
         required: true
@@ -101,6 +106,15 @@ jobs:
           fetch-depth: 0
           path: repo
 
+      - name: Check branch promotion order
+        id: branch-order
+        working-directory: repo
+        env:
+          HEAD_BRANCH: ${{ inputs.head_branch }}
+          BASE_BRANCH: ${{ inputs.base_branch }}
+          PIPELINE_ORDER: ${{ inputs.pipeline_order }}
+        run: bash $GITHUB_WORKSPACE/automation/scripts/pr_automation/check_branch_order.sh
+
       - name: Categorise metadata changes
         id: ocm
         working-directory: repo
@@ -128,6 +142,7 @@ jobs:
           path: |
             /tmp/ocm_report.json
             /tmp/package_audit.json
+            /tmp/branch_order.json
           if-no-files-found: ignore
 
   post-report:
