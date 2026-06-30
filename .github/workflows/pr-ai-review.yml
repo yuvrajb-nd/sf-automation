@@ -1,9 +1,4 @@
-name: AI PR Review & Conflict Resolution (Reusable)
-
-# Lives in yuvrajb-nd/sf-automation.
-# Each job uses a dual-checkout pattern:
-#   path: automation  → sf-automation repo (scripts)
-#   path: repo        → the calling feature repo (git operations target)
+name: AI PR Review (Reusable)
 
 on:
   workflow_call:
@@ -11,13 +6,13 @@ on:
       pr_number:
         description: Pull request number
         required: true
-        type: string
+        type: number
       head_branch:
-        description: Source branch (the PR branch)
+        description: Source branch
         required: true
         type: string
       base_branch:
-        description: Target branch (TESTING or main)
+        description: Target branch
         required: true
         type: string
       head_sha:
@@ -32,33 +27,9 @@ on:
       GH_BOT_TOKEN:
         required: true
 
-  workflow_dispatch:
-    inputs:
-      pr_number:
-        description: PR number to process
-        required: true
-        type: string
-      head_branch:
-        description: Source branch
-        required: true
-        type: string
-      base_branch:
-        description: Target branch
-        required: true
-        type: string
-      head_sha:
-        description: Head commit SHA
-        required: true
-        type: string
-      repo:
-        description: owner/repo
-        required: true
-        type: string
-
 jobs:
-  # ── Job 1: Detect & Resolve Conflicts ──────────────────────────────────────
   detect-and-resolve:
-    name: Conflict Detection & AI Resolution
+    name: Conflict Detection and AI Resolution
     runs-on: ubuntu-latest
     permissions:
       contents: write
@@ -118,9 +89,8 @@ jobs:
           path: /tmp/conflict_report.json
           if-no-files-found: ignore
 
-  # ── Job 2: OCM Validation ──────────────────────────────────────────────────
   ocm-validation:
-    name: OCM Validation & Package Audit
+    name: OCM Validation and Package Audit
     runs-on: ubuntu-latest
     permissions:
       contents: read
@@ -177,7 +147,6 @@ jobs:
             /tmp/package_audit.json
           if-no-files-found: ignore
 
-  # ── Job 3: Post Report ─────────────────────────────────────────────────────
   post-report:
     name: Post PR Comment
     runs-on: ubuntu-latest
