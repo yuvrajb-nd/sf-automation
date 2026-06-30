@@ -29,16 +29,22 @@ jobs:
     outputs:
       conflicts_found: ${{ steps.detect.outputs.CONFLICTS_FOUND }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout sf-automation (scripts)
+        uses: actions/checkout@v4
         with:
+          repository: yuvrajb-nd/sf-automation
+          token: ${{ secrets.GH_BOT_TOKEN }}
           path: automation
-      - uses: actions/checkout@v4
+
+      - name: Checkout feature repo
+        uses: actions/checkout@v4
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.head_branch }}
           token: ${{ secrets.GH_BOT_TOKEN }}
           fetch-depth: 0
           path: repo
+
       - name: Detect conflicts
         id: detect
         working-directory: repo
@@ -46,12 +52,14 @@ jobs:
           BASE_BRANCH: ${{ inputs.base_branch }}
           HEAD_BRANCH: ${{ inputs.head_branch }}
         run: bash $GITHUB_WORKSPACE/automation/scripts/pr_automation/detect_conflicts.sh
+
       - name: Extract conflict hunks
         if: steps.detect.outputs.CONFLICTS_FOUND == '"true"'
         working-directory: repo
         env:
           BASE_BRANCH: ${{ inputs.base_branch }}
         run: bash $GITHUB_WORKSPACE/automation/scripts/pr_automation/extract_hunks.sh
+
       - name: Resolve conflicts with AI
         id: resolve
         if: steps.detect.outputs.CONFLICTS_FOUND == '"true"'
@@ -62,6 +70,7 @@ jobs:
           BASE_BRANCH: ${{ inputs.base_branch }}
           GH_TOKEN: ${{ secrets.GH_BOT_TOKEN }}
         run: bash $GITHUB_WORKSPACE/automation/scripts/pr_automation/resolve_conflicts.sh
+
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -76,16 +85,22 @@ jobs:
       ocm_high: ${{ steps.ocm.outputs.OCM_HIGH }}
       missing_count: ${{ steps.audit.outputs.MISSING_COUNT }}
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout sf-automation (scripts)
+        uses: actions/checkout@v4
         with:
+          repository: yuvrajb-nd/sf-automation
+          token: ${{ secrets.GH_BOT_TOKEN }}
           path: automation
-      - uses: actions/checkout@v4
+
+      - name: Checkout feature repo
+        uses: actions/checkout@v4
         with:
           repository: ${{ inputs.repo }}
           ref: ${{ inputs.head_branch }}
           token: ${{ secrets.GH_BOT_TOKEN }}
           fetch-depth: 0
           path: repo
+
       - name: Categorise metadata changes
         id: ocm
         working-directory: repo
@@ -95,6 +110,7 @@ jobs:
           BASE_BRANCH: ${{ inputs.base_branch }}
           GH_TOKEN: ${{ secrets.GH_BOT_TOKEN }}
         run: bash $GITHUB_WORKSPACE/automation/scripts/pr_automation/ocm_categorise.sh
+
       - name: Audit Package.xml
         id: audit
         working-directory: repo
@@ -104,6 +120,7 @@ jobs:
           GH_TOKEN: ${{ secrets.GH_BOT_TOKEN }}
           REPO_ROOT: ${{ github.workspace }}/repo
         run: bash $GITHUB_WORKSPACE/automation/scripts/pr_automation/audit_package_xml.sh
+
       - if: always()
         uses: actions/upload-artifact@v4
         with:
@@ -119,19 +136,25 @@ jobs:
     needs: [detect-and-resolve, ocm-validation]
     if: always()
     steps:
-      - uses: actions/checkout@v4
+      - name: Checkout sf-automation (scripts only)
+        uses: actions/checkout@v4
         with:
+          repository: yuvrajb-nd/sf-automation
+          token: ${{ secrets.GH_BOT_TOKEN }}
           path: automation
+
       - uses: actions/download-artifact@v4
         with:
           name: conflict-report
           path: /tmp
         continue-on-error: true
+
       - uses: actions/download-artifact@v4
         with:
           name: ocm-report
           path: /tmp
         continue-on-error: true
+
       - name: Post or update PR comment
         env:
           PR_NUMBER: ${{ inputs.pr_number }}
