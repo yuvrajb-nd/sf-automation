@@ -23,7 +23,7 @@ read_json() {
 # ── Conflict Resolution Section ───────────────────────────────────────────────
 CONFLICT_JSON=$(read_json "$CONFLICT_REPORT" '{"skipped":true}')
 CONFLICTS_FOUND=$(echo "$CONFLICT_JSON" | jq -r '.conflicts_found // false')
-RESOLUTION_STATUS="⏭️ No conflicts detected"
+RESOLUTION_STATUS="[SKIP] No conflicts detected"
 CONFLICT_TABLE=""
 RESOLUTION_COMMIT=""
 
@@ -32,15 +32,15 @@ if [ "$CONFLICTS_FOUND" = "true" ]; then
   RESOLUTION_COMMIT=$(echo "$CONFLICT_JSON" | jq -r '.commit_sha // ""')
 
   if [ "$ALL_PASSED" = "true" ]; then
-    RESOLUTION_STATUS="✅ Resolved automatically"
+    RESOLUTION_STATUS="[OK] Resolved automatically"
     [ -n "$RESOLUTION_COMMIT" ] && RESOLUTION_STATUS="$RESOLUTION_STATUS — committed as \`${RESOLUTION_COMMIT:0:7}\`"
   else
-    RESOLUTION_STATUS="❌ Some files could not be resolved — manual intervention required"
+    RESOLUTION_STATUS="[FAIL] Some files could not be resolved — manual intervention required"
   fi
 
   CONFLICT_TABLE=$(echo "$CONFLICT_JSON" | jq -r '
     .files[]? |
-    "| `\(.file)` | \(.model // "claude-sonnet-4-6") | \(if .critique_skipped then "Skipped (<20 lines)" else (if .critique_approved then "GPT ✅" else "GPT ❌" end) end) | \(.status) |"
+    "| `\(.file)` | \(.model // "claude-sonnet-4-6") | \(if .critique_skipped then "Skipped (<20 lines)" else (if .critique_approved then "GPT:APPROVED" else "GPT:REJECTED" end) end) | \(.status) |"
   ' || true)
 fi
 
@@ -58,16 +58,16 @@ OCM_TABLE=$(echo "$OCM_JSON" | jq -r '
 
 RISK_ROWS=$(echo "$OCM_JSON" | jq -r '
   .risk_flags[]? |
-  if .severity == "high"   then "🔴"
-  elif .severity == "medium" then "🟡"
-  else "🔵" end + " **\(.message)**" +
+  if .severity == "high"   then "[HIGH]"
+  elif .severity == "medium" then "[MED]"
+  else "[LOW]" end + " **\(.message)**" +
   (if .detail then "\n  > `\(.detail)`" else "" end)
 ' || true)
 
 # ── Package Audit Section ─────────────────────────────────────────────────────
 AUDIT_JSON=$(read_json "$AUDIT_FILE" '{"skipped":true}')
 AUDIT_SKIPPED=$(echo "$AUDIT_JSON" | jq -r '.skipped // false')
-AUDIT_STATUS="⏭️ No Package.xml found for this branch"
+AUDIT_STATUS="[SKIP] No Package.xml found for this branch"
 AUDIT_DETAIL=""
 AUDIT_EXPLANATION=""
 
@@ -77,9 +77,9 @@ if [ "$AUDIT_SKIPPED" != "true" ]; then
   MISSING=$(echo "$AUDIT_JSON" | jq -r '.missing_count // 0')
 
   if [ "$MISSING" -eq 0 ]; then
-    AUDIT_STATUS="✅ All $TOTAL components present in repository"
+    AUDIT_STATUS="[OK] All $TOTAL components present in repository"
   else
-    AUDIT_STATUS="⚠️ $MISSING/$TOTAL component(s) missing from repository"
+    AUDIT_STATUS="[WARN] $MISSING/$TOTAL component(s) missing from repository"
     AUDIT_DETAIL=$(echo "$AUDIT_JSON" | jq -r '.missing[]? | "- `\(.member)` (\(.type)) — expected at `\(.expected_path)`"' || true)
     AUDIT_EXPLANATION=$(echo "$AUDIT_JSON" | jq -r '.missing_explanation // ""')
   fi
@@ -89,12 +89,25 @@ if [ "$AUDIT_SKIPPED" != "true" ]; then
 fi
 
 # ── Overall status badge ──────────────────────────────────────────────────────
-if [ "$OCM_HIGH" -gt 0 ] || echo "$CONFLICT_JSON" | jq -e '.all_passed == false' > /dev/null 2>&1; then
-  BADGE="🔴 **Action Required**"
+BRANCH_ORDER_FILE="${BRANCH_ORDER_FILE:-/tmp/branch_order.json}"
+BRANCH_ORDER_JSON=$(read_json "$BRANCH_ORDER_FILE" '{"status":"skipped"}')
+BRANCH_ORDER_STATUS=$(echo "$BRANCH_ORDER_JSON" | jq -r '.status // "skipped"')
+BRANCH_ORDER_MSG=$(echo "$BRANCH_ORDER_JSON" | jq -r '.message // ""')
+BRANCH_ORDER_PIPELINE=$(echo "$BRANCH_ORDER_JSON" | jq -r '.pipeline // ""')
+
+case "$BRANCH_ORDER_STATUS" in
+  ok)        BRANCH_ORDER_LABEL="[OK]" ;;
+  violation) BRANCH_ORDER_LABEL="[VIOLATION]" ;;
+  skipped)   BRANCH_ORDER_LABEL="[SKIP]" ;;
+  *)         BRANCH_ORDER_LABEL="[SKIP]" ;;
+esac
+
+if [ "$OCM_HIGH" -gt 0 ] || echo "$CONFLICT_JSON" | jq -e '.all_passed == false' > /dev/null 2>&1 || [ "$BRANCH_ORDER_STATUS" = "violation" ]; then
+  BADGE="[ACTION REQUIRED]"
 elif [ "$OCM_MED" -gt 0 ] || [ "$(echo "$AUDIT_JSON" | jq -r '.missing_count // 0')" -gt 0 ]; then
-  BADGE="🟡 **Review Recommended**"
+  BADGE="[REVIEW RECOMMENDED]"
 else
-  BADGE="🟢 **All Clear**"
+  BADGE="[ALL CLEAR]"
 fi
 
 # ── Assemble comment body ─────────────────────────────────────────────────────
@@ -138,7 +151,7 @@ ${RISK_ROWS}"
 else
   BODY="${BODY}
 
-#### Risk Flags — ✅ None detected"
+#### Risk Flags — [NONE]"
 fi
 
 BODY="${BODY}
@@ -172,6 +185,13 @@ if [ -n "${REMOVED:-}" ]; then
 **Removed components vs \`${BASE_BRANCH}\`:**
 ${REMOVED}"
 fi
+
+BODY="${BODY}
+
+---
+
+### Branch Order — ${BRANCH_ORDER_LABEL} ${BRANCH_ORDER_MSG}
+Pipeline: \`${BRANCH_ORDER_PIPELINE}\`"
 
 BODY="${BODY}
 
