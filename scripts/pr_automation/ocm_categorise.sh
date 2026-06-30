@@ -63,14 +63,42 @@ done < /tmp/changed_files.txt
 DIFF_ADDED=$(git diff "origin/$BASE_BRANCH"...HEAD -- '*.cls' '*.trigger' 2>/dev/null \
   | grep '^+' | grep -v '^+++' || true)
 
-# SOQL inside for loops
-if echo "$DIFF_ADDED" | grep -qiE '\[SELECT[[:space:]]'; then
-  SOQL_IN_LOOP=$(git diff "origin/$BASE_BRANCH"...HEAD -- '*.cls' '*.trigger' 2>/dev/null \
-    | grep -n '^\+.*\[SELECT' | grep -v '^+++' \
-    | sed 's/^/  /' | head -10 || true)
-  if [ -n "$SOQL_IN_LOOP" ]; then
-    RISK_FLAGS+=('{"severity":"high","type":"soql_in_loop","message":"Potential SOQL inside loop detected","detail":"'"$(echo "$SOQL_IN_LOOP" | head -3 | tr '\n' '|')"'"}')
-  fi
+# SOQL inside for-loop BODY (not in for-loop header)
+# Valid: for (Account acc : [SELECT Id FROM Account]) { ... }
+# Invalid: for (Account acc : accounts) { result = [SELECT ...]; }
+SOQL_IN_LOOP_DETAIL=""
+while IFS= read -r cls_file; do
+  [ -z "$cls_file" ] && continue
+  FILE_RESULT=$(git diff "origin/$BASE_BRANCH"...HEAD -- "$cls_file" 2>/dev/null \
+    | awk -v fname="$cls_file" '
+      /^\+/ && !/^\+\+\+/ {
+        line = substr($0, 2)
+        # Enter for-loop tracking when we see "for (" but NOT a SOQL for-loop header
+        if (line ~ /for[[:space:]]*\(/ && line !~ /:[[:space:]]*\[SELECT/) {
+          in_for = 1
+          depth = 0
+        }
+        if (in_for) {
+          # Count braces to track body depth
+          n = split(line, ch, "")
+          for (i = 1; i <= n; i++) {
+            if (ch[i] == "{") depth++
+            if (ch[i] == "}" && depth > 0) depth--
+            if (ch[i] == "}" && depth == 0) in_for = 0
+          }
+          # Flag SOQL inside the body (depth > 0 means we are past the opening brace)
+          if (depth > 0 && line ~ /\[SELECT/) {
+            print fname ":" NR ": " line
+          }
+        }
+      }
+    ' 2>/dev/null || true)
+  SOQL_IN_LOOP_DETAIL+="$FILE_RESULT"
+done < <(git diff --name-only "origin/$BASE_BRANCH"...HEAD 2>/dev/null | grep -E '\.(cls|trigger)$' || true)
+
+if [ -n "$SOQL_IN_LOOP_DETAIL" ]; then
+  DETAIL_ESCAPED=$(echo "$SOQL_IN_LOOP_DETAIL" | head -3 | tr '\n' '|' | sed 's/["\]/\\&/g')
+  RISK_FLAGS+=("{\"severity\":\"high\",\"type\":\"soql_in_loop\",\"message\":\"SOQL query inside for-loop body (governor limit risk)\",\"detail\":\"$DETAIL_ESCAPED\"}")
 fi
 
 # Hardcoded Salesforce record IDs (15 or 18 char alphanumeric starting with known prefixes)
