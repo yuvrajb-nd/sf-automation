@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# AI conflict resolution: GPT-4o (GitHub Models) resolves, GPT-4o critiques hunks >20 lines.
+# AI conflict resolution: Claude Sonnet (GitHub Models) resolves, GPT-4o critiques hunks >20 lines.
 # All AI calls use GH_TOKEN via GitHub Models — no separate API keys needed.
 # On success: commits resolved files to HEAD branch. On any failure: aborts without pushing.
 # Outputs /tmp/conflict_report.json
@@ -11,7 +11,7 @@ BASE_BRANCH="${3:-${BASE_BRANCH:?'BASE_BRANCH required'}}"
 GH_TOKEN="${GH_TOKEN:?'GH_TOKEN required'}"
 
 GH_MODELS_ENDPOINT="https://models.inference.ai.azure.com/chat/completions"
-RESOLVER_MODEL="gpt-4o"
+RESOLVER_MODEL="claude-3-5-sonnet"
 CRITIQUE_MODEL="gpt-4o"
 
 CONFLICT_FILE="${CONFLICT_FILE:-/tmp/conflicting_files.txt}"
